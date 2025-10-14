@@ -44,26 +44,26 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
     const request = pool.request();
     
     let query = `
-      SELECT 
-        COUNT(A.C_ACCOUNT) AS totalCustomers,
-        100 AS totalAccounts,
-        200 AS totalBilled,
-        300 AS totalPayments,
-        400 AS totalUnpaid
-      FROM ADVANCED.BIF003 AS A -- Customer/Account Table
-      JOIN ADVANCED.BIF002 AS B 
-        ON A.C_ACCOUNT = B.C_ACCOUNT -- Service Address Table
-      JOIN ADVANCED.BIF001 AS C 
-        ON A.C_CUSTOMER = C.C_CUSTOMER -- Customer Name Table
-    `;
+                  SELECT 
+                    COUNT(A.C_CUSTOMER) AS totalCustomers,
+                    COUNT(A.C_ACCOUNT) AS totalAccounts,
+                    200 AS totalBilled,
+                    300 AS totalPayments,
+                    400 AS totalUnpaid
+                  FROM ADVANCED.BIF003 AS A -- Customer/Account Table
+                  JOIN ADVANCED.BIF002 AS B 
+                    ON A.C_ACCOUNT = B.C_ACCOUNT -- Service Address Table
+                  JOIN ADVANCED.BIF001 AS C 
+                    ON A.C_CUSTOMER = C.C_CUSTOMER -- Customer Name Table
+                `;
 
     if (dateRange) {
       request.input('startDate', sql.Date, dateRange.startDate);
       request.input('endDate', sql.Date, dateRange.endDate);
       query += `
-        WHERE A.C_ACCOUNTSTATUS = 'AC'
-        AND A.D_MOVEIN BETWEEN @startDate AND @endDate
-      `;
+                WHERE A.C_ACCOUNTSTATUS = 'AC'
+                AND A.D_MOVEIN BETWEEN @startDate AND @endDate
+              `;
     }
 
     const result = await request.query(query);
