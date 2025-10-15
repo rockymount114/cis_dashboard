@@ -14,23 +14,7 @@ export interface KpiData {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-function KpiCard({ title, value }: { title: string; value: number | string }) {
-  return (
-    <div className="bg-white shadow-lg rounded-lg p-6 text-center">
-      <h3 className="text-lg font-semibold text-gray-600">{title}</h3>
-      <p className="text-4xl font-bold text-gray-900 mt-2">{value}</p>
-    </div>
-  );
-}
-
-function KpiCardSkeleton() {
-  return (
-    <div className="bg-white shadow-lg rounded-lg p-6 text-center animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-3/4 mx-auto"></div>
-      <div className="h-10 bg-gray-300 rounded w-1/2 mx-auto mt-2"></div>
-    </div>
-  );
-}
+import { KpiCard, KpiCardSkeleton } from '@/app/components/KpiCard';
 
 export default function Home() {
   const getFormattedDate = (date: Date) => {
@@ -97,11 +81,11 @@ export default function Home() {
 
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 w-full max-w-5xl">
-          <KpiCard title="Total Customers" value={data.totalCustomers.toLocaleString()} />
-          <KpiCard title="Total Accounts" value={data.totalAccounts.toLocaleString()} />
-          <KpiCard title="Total Billed" value={data.totalBilled.toLocaleString()} />
-          <KpiCard title="Total Payments" value={data.totalPayments.toLocaleString()} />
-          <KpiCard title="Total Unpaid" value={data.totalUnpaid.toLocaleString()} />
+          <KpiCard title="Total Customers" value={data.totalCustomers} />
+          <KpiCard title="Total Accounts" value={data.totalAccounts} />
+          <KpiCard title="Total Billed" value={data.totalBilled} />
+          <KpiCard title="Total Collected" value={data.totalPayments} />
+          <KpiCard title="Total Unpaid" value={data.totalUnpaid} />
         </div>
       )}
 

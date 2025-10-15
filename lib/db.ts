@@ -47,7 +47,6 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
                   SELECT 
                     COUNT(A.C_CUSTOMER) AS totalCustomers,
                     COUNT(A.C_ACCOUNT) AS totalAccounts,
-                    200 AS totalBilled,
                     300 AS totalPayments,
                     400 AS totalUnpaid
                   FROM ADVANCED.BIF003 AS A -- Customer/Account Table
@@ -56,6 +55,31 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
                   JOIN ADVANCED.BIF001 AS C 
                     ON A.C_CUSTOMER = C.C_CUSTOMER -- Customer Name Table
                 `;
+
+    const totalBilledQuery = `
+                  SELECT SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled
+                  FROM ADVANCED.BIF951 AS b
+                  WHERE b.L_PROCESSED = 1
+                    AND b.L_CANCEL = 0
+                    AND b.L_NOBILL = 0
+                    AND b.C_BILLTYPE <> 'CB'
+                    AND b.D_BILLDATE >= @startDate
+                    AND b.D_BILLDATE <= @endDate;
+                `;
+               
+    const totalPaymentsQuery = `
+                                  SELECT
+                                  ABS(SUM(t.Y_AMOUNT)) AS totalCollected
+                                  FROM ADVANCED.BIF956 t
+                                  WHERE
+                                  t.Y_AMOUNT < 0
+                                  AND t.L_PROCESSED = 1
+                                  AND t.L_DELETED = 0
+                                  AND t.C_TRANSCODE LIKE 'PAY%'
+                                  AND t.D_PAYDATE >= @startDate
+                                  AND t.D_PAYDATE <= @endDate           
+    
+                                `;            
 
     if (dateRange) {
       request.input('startDate', sql.Date, dateRange.startDate);
@@ -69,12 +93,18 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
     const result = await request.query(query);
     const record = result.recordset[0];
 
+    const totalBilledResult = await request.query(totalBilledQuery);
+    const totalBilledRecord = totalBilledResult.recordset[0];
+
+    const totalCollectedResult = await request.query(totalPaymentsQuery);
+    const totalCollectedRecord = totalCollectedResult.recordset[0];
+
     return {
       totalCustomers: record.totalCustomers,
       totalAccounts: record.totalAccounts,
-      totalBilled: record.totalBilled,
-      totalPayments: record.totalPayments,
-      totalUnpaid: record.totalUnpaid,
+      totalBilled: totalBilledRecord.totalBilled,
+      totalPayments: totalCollectedRecord.totalCollected,
+      totalUnpaid: totalBilledRecord.totalBilled - totalCollectedRecord.totalCollected,
     };
   } catch (err) {
     console.error('Error fetching KPI data:', err);
