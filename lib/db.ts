@@ -45,29 +45,26 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
     
     let query = `
                   SELECT 
-                    COUNT(A.C_CUSTOMER) AS totalCustomers,
-                    COUNT(A.C_ACCOUNT) AS totalAccounts,
-                    300 AS totalPayments,
-                    400 AS totalUnpaid
-                  FROM ADVANCED.BIF003 AS A -- Customer/Account Table
-                  JOIN ADVANCED.BIF002 AS B 
-                    ON A.C_ACCOUNT = B.C_ACCOUNT -- Service Address Table
-                  JOIN ADVANCED.BIF001 AS C 
-                    ON A.C_CUSTOMER = C.C_CUSTOMER -- Customer Name Table
+                    count(distinct C_CUSTOMER) AS totalCustomers,
+                    count(distinct C_ACCOUNT) AS totalAccounts
+                  FROM ADVANCED.BIF951 AS b
+                  WHERE
+                        b.L_PROCESSED = 1
+                        AND b.L_CANCEL = 0
+                        AND b.L_NOBILL = 0
+                        AND b.C_BILLTYPE <> 'CB'
                 `;
 
-    const totalBilledQuery = `
+    let totalBilledQuery = `
                   SELECT SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled
                   FROM ADVANCED.BIF951 AS b
                   WHERE b.L_PROCESSED = 1
                     AND b.L_CANCEL = 0
                     AND b.L_NOBILL = 0
                     AND b.C_BILLTYPE <> 'CB'
-                    AND b.D_BILLDATE >= @startDate
-                    AND b.D_BILLDATE <= @endDate;
                 `;
                
-    const totalPaymentsQuery = `
+    let totalPaymentsQuery = `
                                   SELECT
                                   ABS(SUM(t.Y_AMOUNT)) AS totalCollected
                                   FROM ADVANCED.BIF956 t
@@ -75,19 +72,25 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
                                   t.Y_AMOUNT < 0
                                   AND t.L_PROCESSED = 1
                                   AND t.L_DELETED = 0
-                                  AND t.C_TRANSCODE LIKE 'PAY%'
-                                  AND t.D_PAYDATE >= @startDate
-                                  AND t.D_PAYDATE <= @endDate           
+                                  AND t.C_TRANSCODE LIKE 'PAY%'   
     
                                 `;            
 
     if (dateRange) {
+      query += `
+                AND b.D_BILLDATE >= @startDate
+                AND b.D_BILLDATE <= @endDate
+              `;
+      totalBilledQuery += `
+        AND b.D_BILLDATE >= @startDate
+        AND b.D_BILLDATE <= @endDate
+      `;
+      totalPaymentsQuery += `
+        AND t.D_PAYDATE >= @startDate
+        AND t.D_PAYDATE <= @endDate
+      `;
       request.input('startDate', sql.Date, dateRange.startDate);
       request.input('endDate', sql.Date, dateRange.endDate);
-      query += `
-                WHERE A.C_ACCOUNTSTATUS = 'AC'
-                AND A.D_MOVEIN BETWEEN @startDate AND @endDate
-              `;
     }
 
     const result = await request.query(query);
