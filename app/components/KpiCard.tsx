@@ -1,25 +1,25 @@
 
+import CountUp from 'react-countup';
+
 interface KpiCardProps {
   title: string;
-  value: number | string;
+  value: number;
   format?: "currency" | "number";
 }
 
 export function KpiCard({ title, value, format = "currency" }: KpiCardProps) {
-  let formattedValue: string | number = value;
-
-  if (typeof value === 'number') {
-    if (format === "currency") {
-      formattedValue = value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-    } else if (format === "number") {
-      formattedValue = value.toLocaleString('en-US'); // e.g., 1,200 instead of 1200
-    }
-  }
-
   return (
-    <div className="bg-white shadow-lg rounded-lg p-6 text-center">
+    <div className="bg-white shadow-lg rounded-lg p-6 text-center shake-on-hover">
       <h3 className="text-lg font-semibold text-gray-500">{title}</h3>
-      <p className="text-xl font-bold text-gray-900 mt-2">{formattedValue}</p>
+      <p className="text-xl font-bold text-gray-900 mt-2">
+        <CountUp
+          end={value}
+          duration={2}
+          separator=","
+          prefix={format === "currency" ? "$" : ""}
+          decimals={format === "currency" ? 2 : 0}
+        />
+      </p>
     </div>
   );
 }
