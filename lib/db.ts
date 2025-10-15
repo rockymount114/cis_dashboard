@@ -9,7 +9,8 @@ const config = {
     encrypt: false, // Set to false for non-Azure SQL Server instances
     trustServerCertificate: true, // Keep true for local dev / self-signed certs
     requestTimeout: 60000, // 60 seconds
-    connectionTimeout: 60000 // 60 seconds
+    connectionTimeout: 60000, // 60 seconds
+    readonly: true
   },
 };
 

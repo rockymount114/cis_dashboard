@@ -80,7 +80,7 @@ export default function Home() {
           <KpiCard title="Accounts" value={data.totalAccounts} format="number"/>
           <KpiCard title="Billed" value={data.totalBilled} format="currency"/>
           <KpiCard title="Collected" value={data.totalPayments} format="currency"/>
-          <KpiCard title="Unpaid" value={data.totalUnpaid} format="currency"/>
+          <KpiCard title="Gap" value={data.totalUnpaid} format="currency"/>
         </div>
       )}
 
