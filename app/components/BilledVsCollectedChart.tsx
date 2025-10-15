@@ -16,6 +16,25 @@ function formatYAxis(value: number) {
     return value;
   }
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const billed = payload[0].payload.billed;
+      const collected = payload[0].payload.collected;
+      const percentage = billed > 0 ? (collected / billed) * 100 : 0;
+  
+      return (
+        <div className="p-2 bg-white border rounded shadow-md">
+          <p className="label">{`${label}`}</p>
+          <p className="intro" style={{ color: payload[0].color }}>{`Billed: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(billed)}`}</p>
+          <p className="intro" style={{ color: payload[1].color }}>{`Collected: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(collected)}`}</p>
+          <p className="intro">{`Collection Rate: ${percentage.toFixed(1)}%`}</p>
+        </div>
+      );
+    }
+  
+    return null;
+  };
+
 export const BilledVsCollectedChart = ({ startDate, endDate }: { startDate: string, endDate: string }) => {
   const { data, error } = useSWR<ChartData[]>(`/api/kpis/billed-vs-collected?startDate=${startDate}&endDate=${endDate}`, fetcher);
 
@@ -30,7 +49,7 @@ export const BilledVsCollectedChart = ({ startDate, endDate }: { startDate: stri
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" />
             <YAxis tickFormatter={formatYAxis} />
-            <Tooltip formatter={(value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)} />
+            <Tooltip content={<CustomTooltip />} />
             <Legend />
             <Line type="monotone" dataKey="billed" stroke="#8884d8" activeDot={{ r: 8 }} />
             <Line type="monotone" dataKey="collected" stroke="#82ca9d" />
