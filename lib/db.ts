@@ -8,8 +8,8 @@ const config = {
   options: {
     encrypt: false, // Set to false for non-Azure SQL Server instances
     trustServerCertificate: true, // Keep true for local dev / self-signed certs
-    requestTimeout: 60000, // 30 seconds
-    connectionTimeout: 60000 // 30 seconds
+    requestTimeout: 60000, // 60 seconds
+    connectionTimeout: 60000 // 60 seconds
   },
 };
 
@@ -132,8 +132,29 @@ export const getChartData = async (dateRange: DateRange): Promise<ChartData[]> =
     request.input('startDate', sql.Date, dateRange.startDate);
     request.input('endDate', sql.Date, dateRange.endDate);
 
-    const totalBilledByMonthQuery = `SELECT FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS BillYearMonth, SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled FROM ADVANCED.BIF951 AS b WHERE b.L_PROCESSED = 1 AND b.L_CANCEL = 0 AND b.L_NOBILL = 0 AND b.C_BILLTYPE <> 'CB' AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate GROUP BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE) ORDER BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE);`;
-    const totalCollectedByMonthQuery = `SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, ABS(SUM(t.Y_AMOUNT)) AS TotalCollected FROM ADVANCED.BIF956 t WHERE t.Y_AMOUNT < 0 AND t.L_PROCESSED = 1 AND t.L_DELETED = 0 AND t.C_TRANSCODE LIKE 'PAY%' AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') ORDER BY PayYearMonth;`;
+    const totalBilledByMonthQuery = `SELECT FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), 
+                                      MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS BillYearMonth, 
+                                      SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled 
+                                      FROM ADVANCED.BIF951 AS b 
+                                      WHERE b.L_PROCESSED = 1 
+                                      AND b.L_CANCEL = 0 
+                                      AND b.L_NOBILL = 0 
+                                      AND b.C_BILLTYPE <> 'CB' 
+                                      AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate 
+                                      GROUP BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE) 
+                                      ORDER BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE);
+                                      `;
+    const totalCollectedByMonthQuery = `SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, 
+                                        ABS(SUM(t.Y_AMOUNT)) AS TotalCollected 
+                                        FROM ADVANCED.BIF956 t 
+                                        WHERE t.Y_AMOUNT < 0 
+                                        AND t.L_PROCESSED = 1 
+                                        AND t.L_DELETED = 0 
+                                        AND t.C_TRANSCODE LIKE 'PAY%' 
+                                        AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate 
+                                        GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') 
+                                        ORDER BY PayYearMonth;
+                                        `;
 
     const billedResult = await request.query(totalBilledByMonthQuery);
     const collectedResult = await request.query(totalCollectedByMonthQuery);
