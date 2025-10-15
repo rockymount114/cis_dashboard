@@ -1,0 +1,45 @@
+
+
+
+SELECT 
+count(distinct C_CUSTOMER) AS totalCustomers,
+count(distinct C_ACCOUNT) AS totalAccounts
+
+FROM ADVANCED.BIF951 AS b
+WHERE
+    b.L_PROCESSED = 1
+    AND b.L_CANCEL = 0
+    AND b.L_NOBILL = 0
+    AND b.C_BILLTYPE <> 'CB'
+    AND b.D_BILLDATE >= '2025-01-01'
+    AND b.D_BILLDATE <= GETDATE()
+
+
+-- total billed
+
+SELECT 
+    SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled
+FROM ADVANCED.BIF951 AS b
+WHERE
+    b.L_PROCESSED = 1
+    AND b.L_CANCEL = 0
+    AND b.L_NOBILL = 0
+    AND b.C_BILLTYPE <> 'CB'
+    AND b.D_BILLDATE >= '2025-01-01'
+    AND b.D_BILLDATE <= GETDATE()
+
+---- total collected
+
+SELECT
+    --t.C_CUSTOMER,
+    --t.C_ACCOUNT,
+	--t.D_PAYDATE,
+    ABS(SUM(t.Y_AMOUNT)) AS TotalCollected
+FROM ADVANCED.BIF956 t
+WHERE
+    t.Y_AMOUNT < 0
+    AND t.L_PROCESSED = 1
+    AND t.L_DELETED = 0
+	AND t.C_TRANSCODE LIKE 'PAY%'
+	AND t.D_PAYDATE >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)
+	AND t.D_PAYDATE <= GETDATE()

@@ -1,1 +1,15 @@
-SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, ABS(SUM(t.Y_AMOUNT)) AS TotalCollected FROM ADVANCED.BIF956 t WHERE t.Y_AMOUNT < 0 AND t.L_PROCESSED = 1 AND t.L_DELETED = 0 AND t.C_TRANSCODE LIKE 'PAY%' AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') ORDER BY PayYearMonth;
+SELECT
+    FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth,
+    ABS(SUM(t.Y_AMOUNT)) AS TotalCollected
+FROM ADVANCED.BIF956 t
+WHERE
+    t.Y_AMOUNT < 0
+    AND t.L_PROCESSED = 1
+    AND t.L_DELETED = 0
+    AND t.C_TRANSCODE LIKE 'PAY%'
+    AND t.D_PAYDATE >= @startDate
+    AND t.D_PAYDATE <= @endDate
+GROUP BY
+    FORMAT(t.D_PAYDATE, 'yyyy-MM')
+ORDER BY
+    PayYearMonth;
