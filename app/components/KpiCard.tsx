@@ -1,7 +1,20 @@
-export function KpiCard({ title, value }: { title: string; value: number | string }) {
-  const formattedValue = typeof value === 'number' 
-    ? value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-    : value;
+
+interface KpiCardProps {
+  title: string;
+  value: number | string;
+  format?: "currency" | "number";
+}
+
+export function KpiCard({ title, value, format = "currency" }: KpiCardProps) {
+  let formattedValue: string | number = value;
+
+  if (typeof value === 'number') {
+    if (format === "currency") {
+      formattedValue = value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    } else if (format === "number") {
+      formattedValue = value.toLocaleString('en-US'); // e.g., 1,200 instead of 1200
+    }
+  }
 
   return (
     <div className="bg-white shadow-lg rounded-lg p-6 text-center">

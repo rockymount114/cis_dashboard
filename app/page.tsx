@@ -81,11 +81,11 @@ export default function Home() {
 
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 w-full max-w-5xl">
-          <KpiCard title="Total Customers" value={data.totalCustomers} />
-          <KpiCard title="Total Accounts" value={data.totalAccounts} />
-          <KpiCard title="Total Billed" value={data.totalBilled} />
-          <KpiCard title="Total Collected" value={data.totalPayments} />
-          <KpiCard title="Total Unpaid" value={data.totalUnpaid} />
+          <KpiCard title="Total Customers" value={data.totalCustomers} format="number"/>
+          <KpiCard title="Total Accounts" value={data.totalAccounts} format="number"/>
+          <KpiCard title="Total Billed" value={data.totalBilled} format="currency"/>
+          <KpiCard title="Total Collected" value={data.totalPayments} format="currency"/>
+          <KpiCard title="Total Unpaid" value={data.totalUnpaid} format="currency"/>
         </div>
       )}
 
