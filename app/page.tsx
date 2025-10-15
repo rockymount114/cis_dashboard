@@ -3,18 +3,13 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 
-// This interface should be in a shared file, e.g., lib/db.ts and exported
-export interface KpiData {
-  totalCustomers: number;
-  totalAccounts: number;
-  totalBilled: number;
-  totalPayments: number;
-  totalUnpaid: number;
-}
+import { KpiData } from '@/lib/db';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 import { KpiCard, KpiCardSkeleton } from '@/app/components/KpiCard';
+import { BilledVsCollectedChart } from '@/app/components/BilledVsCollectedChart';
+
 
 export default function Home() {
   const getFormattedDate = (date: Date) => {
@@ -81,13 +76,15 @@ export default function Home() {
 
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 w-full max-w-5xl">
-          <KpiCard title="Total Customers" value={data.totalCustomers} format="number"/>
-          <KpiCard title="Total Accounts" value={data.totalAccounts} format="number"/>
-          <KpiCard title="Total Billed" value={data.totalBilled} format="currency"/>
-          <KpiCard title="Total Collected" value={data.totalPayments} format="currency"/>
-          <KpiCard title="Total Unpaid" value={data.totalUnpaid} format="currency"/>
+          <KpiCard title="Customers" value={data.totalCustomers} format="number"/>
+          <KpiCard title="Accounts" value={data.totalAccounts} format="number"/>
+          <KpiCard title="Billed" value={data.totalBilled} format="currency"/>
+          <KpiCard title="Collected" value={data.totalPayments} format="currency"/>
+          <KpiCard title="Unpaid" value={data.totalUnpaid} format="currency"/>
         </div>
       )}
+
+      {startDate && endDate && <BilledVsCollectedChart startDate={startDate} endDate={endDate} />}
 
     </main>
   );

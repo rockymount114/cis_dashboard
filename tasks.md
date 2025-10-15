@@ -1,98 +1,75 @@
-# Tasks: CIS Dashboard KPI - Total Billed Amount
+# Feature: Billed vs. Collected Line Chart
 
-**Input**: Design context from user prompt.
-**Prerequisites**: The project is a standard Next.js application.
+This document outlines the tasks required to implement a line chart comparing total billed and total collected amounts per month.
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+## Phase 1: Setup
 
-## Format: `[ID] [P?] [Story] Description`
-- **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
-- Include exact file paths in descriptions
+*   **T001: [System] Install Charting Library**
+    *   **File:** `package.json`
+    *   **Action:** Add a charting library to the project.
+    *   **Command:** `npm install recharts`
 
-## Path Conventions
-- **Next.js App**: `app/` for pages and components, `app/api/` for API routes, `lib/` for shared logic.
+## Phase 2: Foundational (Backend)
 
----
+*   **T002: [Backend] Create SQL Query Files** [P]
+    *   **File:** `query/total_billed_by_month.sql`
+    *   **Action:** Create a new SQL file with the provided query for total billed by month.
+    *   **Content:**
+        ```sql
+        SELECT FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS BillYearMonth, SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled FROM ADVANCED.BIF951 AS b WHERE b.L_PROCESSED = 1 AND b.L_CANCEL = 0 AND b.L_NOBILL = 0 AND b.C_BILLTYPE <> 'CB' AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate GROUP BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE) ORDER BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE);
+        ```
+*   **T003: [Backend] Create SQL Query Files** [P]
+    *   **File:** `query/total_collected_by_month.sql`
+    *   **Action:** Create a new SQL file with the provided query for total collected by month.
+    *   **Content:**
+        ```sql
+        SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, ABS(SUM(t.Y_AMOUNT)) AS TotalCollected FROM ADVANCED.BIF956 t WHERE t.Y_AMOUNT < 0 AND t.L_PROCESSED = 1 AND t.L_DELETED = 0 AND t.C_TRANSCODE LIKE 'PAY%' AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') ORDER BY PayYearMonth;
+        ```
 
-## Phase 1: Setup (Shared Infrastructure)
+*   **T004: [Backend] Create Database Function for Chart Data**
+    *   **File:** `lib/db.ts`
+    *   **Action:** Create a new function `getChartData` that executes the two new SQL queries and merges the results into a single time-series dataset. The function should accept a date range.
 
-**Purpose**: Project initialization and basic structure.
+*   **T005: [Backend] Create API Endpoint for Chart Data**
+    *   **File:** `app/api/kpis/billed-vs-collected/route.ts`
+    *   **Action:** Create a new API route that calls the `getChartData` function from `lib/db.ts` and returns the data as JSON.
 
-*This phase is already complete as we are working in an existing Next.js project.*
+## Phase 3: User Story 1 - Display Billed vs. Collected Line Chart
 
----
+*   **Goal:** As a user, I want to see a line chart comparing total billed and total collected amounts for the selected date range, so I can track revenue and collection efficiency.
+*   **Independent Test Criteria:** The chart should render on the page and display two lines, one for billed amounts and one for collected amounts, with data points for each month in the selected range.
 
-## Phase 2: Foundational (Blocking Prerequisites)
+*   **T006: [Frontend] Create Line Chart Component** [P]
+    *   **File:** `app/components/BilledVsCollectedChart.tsx`
+    *   **Action:** Create a new React component that uses `recharts` to render a line chart. This component will fetch data from the new `/api/kpis/billed-vs-collected` endpoint using `useSWR`, passing the selected date range as query parameters.
 
-**Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented.
+*   **T007: [Frontend] Integrate Chart into Dashboard**
+    *   **File:** `app/page.tsx`
+    *   **Action:** Import and render the `BilledVsCollectedChart` component on the main dashboard page.
 
-- [ ] T001 Verify database connection is configured in `lib/db.ts` and can connect to the `ADVANCED` schema.
+## Phase 4: Polish & Integration
 
-**Checkpoint**: Foundation ready - user story implementation can now begin.
+*   **T008: [Styling] Style Chart Component**
+    *   **File:** `app/components/BilledVsCollectedChart.tsx`
+    *   **Action:** Add styling to the chart to match the overall look and feel of the dashboard. Ensure it is responsive and includes a legend and tooltips.
 
----
+## Dependencies
 
-## Phase 3: User Story 1 - Display Total Billed Amount (Priority: P1) 🎯 MVP
+*   (T002, T003) can be done in parallel.
+*   T004 depends on T002 and T003.
+*   T005 depends on T004.
+*   T006 can be done in parallel with backend tasks (T002-T005) after T001 is complete.
+*   T007 depends on T006 and T005.
+*   T008 depends on T007.
 
-**Goal**: As a user, I want to see the total amount billed for a selected date range on the dashboard.
+## Parallel Execution Examples
 
-**Independent Test**: 1. Select a date range on the main page. 2. Verify that a "Total Billed" card displays a numerical value fetched from the backend. 3. Manually query the database with the same date range and confirm the numbers match.
-
-### Implementation for User Story 1
-
-- [ ] T002 [US1] Create the API route file `app/api/kpis/total-billed/route.ts`.
-- [ ] T003 [US1] In `app/api/kpis/total-billed/route.ts`, implement the GET handler to receive 'from' and 'to' date query parameters.
-- [ ] T004 [US1] In the API route, use the database connection from `lib/db.ts` to execute the provided SQL query against the `ADVANCED.BIF951` table. Use the date parameters to filter the `D_BILLDATE` column.
-- [ ] T005 [US1] The API route should return the calculated `totalBilled` amount as a JSON response (e.g., `{ "totalBilled": 12345.67 }`).
-- [ ] T006 [P] [US1] Create a new directory `app/components/` for UI components.
-- [ ] T007 [P] [US1] Create a new React component `app/components/TotalBilledCard.tsx` that accepts a `total` prop and displays it.
-- [ ] T008 [US1] In the main page file `app/page.tsx`, add two date input fields for the user to select a start and end date.
-- [ ] T009 [US1] In `app/page.tsx`, manage the state for the start date, end date, and the fetched `totalBilled` amount.
-- [ ] T010 [US1] In `app/page.tsx`, implement a data fetching function (e.g., inside a `useEffect` hook) that calls the `/api/kpis/total-billed` endpoint whenever the date range changes.
-- [ ] T011 [US1] In `app/page.tsx`, render the `TotalBilledCard` component, passing the fetched `totalBilled` amount to it.
-- [ ] T012 [US1] Add basic error handling for the API fetch (e.g., display a message if the data fails to load).
-- [ ] T013 [US1] Add basic loading state handling (e.g., show a "Loading..." message while the data is being fetched).
-
-
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently.
-
----
-
-## Phase 4: Polish & Cross-Cutting Concerns
-
-**Purpose**: Improvements that affect multiple user stories.
-
-- [ ] T014 Code cleanup and refactoring.
-- [ ] T015 Add currency formatting to the displayed `totalBilled` amount.
-
----
-
-## Dependencies & Execution Order
-
-### Phase Dependencies
-
-- **Foundational (Phase 2)**: Must be complete before User Story 1.
-- **User Story 1 (Phase 3)**: Depends on Foundational phase completion.
-
-### Within User Story 1
-
-- **Backend (T002-T005)** should be completed before the **Frontend (T008-T011)** integration, though component creation (T006-T007) can happen in parallel.
-- T002 -> T003 -> T004 -> T005
-- T008 -> T009 -> T010 -> T011
-
-### Parallel Opportunities
-
-- **T006 & T007**: The `components` directory and the `TotalBilledCard` can be created while the backend API is being developed.
-- The backend API tasks (T002-T005) can be worked on by one developer while the frontend shell and state management (T008, T009) can be worked on by another.
-
----
+*   **Initial Setup:**
+    *   Developer A can start on T001 and T006 (creating the skeleton of the chart component).
+    *   Developer B can start on T002 and T003.
+*   **After Backend Foundations:**
+    *   Once T005 is complete, the frontend developer (Developer A) can fully integrate the chart component with the live API endpoint.
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
-
-1. Complete Phase 2: Foundational.
-2. Complete Phase 3: User Story 1.
-3. **STOP and VALIDATE**: Test User Story 1 independently as described in its "Independent Test" section.
-4. Deploy/demo if ready.
+The feature will be delivered in a single increment. The MVP is the complete, functional line chart integrated into the dashboard.

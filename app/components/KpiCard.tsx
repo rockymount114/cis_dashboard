@@ -18,8 +18,8 @@ export function KpiCard({ title, value, format = "currency" }: KpiCardProps) {
 
   return (
     <div className="bg-white shadow-lg rounded-lg p-6 text-center">
-      <h3 className="text-lg font-semibold text-gray-600">{title}</h3>
-      <p className="text-2xl font-bold text-gray-900 mt-2">{formattedValue}</p>
+      <h3 className="text-lg font-semibold text-gray-500">{title}</h3>
+      <p className="text-xl font-bold text-gray-900 mt-2">{formattedValue}</p>
     </div>
   );
 }
