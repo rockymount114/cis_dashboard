@@ -1,18 +1,18 @@
-# Feature: Optimize KPI Data Query
+# Feature: Optimize Chart Data Query
 
-## Phase 1: Refactor Database Query
+## Phase 1: Refactor Chart Data Query
 
-### Task T001: Consolidate KPI Data Queries
+### Task T001: Consolidate Chart Data Queries
 
 **File:** `lib/db.ts`
 
-**Goal:** Replace the three separate queries for fetching KPI data with a single, more efficient query.
+**Goal:** Replace the two separate queries for fetching chart data with a single, more efficient query.
 
 **Details:**
 
-- The current implementation in `getKpiData` executes three separate SQL queries to fetch `totalCustomers` and `totalAccounts`, `totalBilled`, and `totalPayments`.
-- This will be replaced by a single SQL query that calculates all these values in one go, reducing database overhead and improving performance.
-- The new query uses Common Table Expressions (CTEs) to first filter the data and then aggregate the results.
+- The current implementation in `getChartData` executes two separate SQL queries to fetch `totalBilledByMonth` and `totalCollectedByMonth`.
+- This will be replaced by a single SQL query that calculates both values in one go, reducing database overhead and improving performance.
+- The new query uses Common Table Expressions (CTEs) and a `FULL OUTER JOIN` to combine the billed and collected data.
 
 **Implementation:**
 
@@ -129,55 +129,47 @@ export const getChartData = async (dateRange: DateRange): Promise<ChartData[]> =
     request.input('startDate', sql.Date, dateRange.startDate);
     request.input('endDate', sql.Date, dateRange.endDate);
 
-    const totalBilledByMonthQuery = `SELECT FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), 
-                                      MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS BillYearMonth, 
-                                      SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled 
-                                      FROM ADVANCED.BIF951 AS b 
-                                      WHERE b.L_PROCESSED = 1 
-                                      AND b.L_CANCEL = 0 
-                                      AND b.L_NOBILL = 0 
-                                      AND b.C_BILLTYPE <> 'CB' 
-                                      AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate 
-                                      GROUP BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE) 
-                                      ORDER BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE);
-                                      `;
-    const totalCollectedByMonthQuery = `SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, 
-                                        ABS(SUM(t.Y_AMOUNT)) AS TotalCollected 
-                                        FROM ADVANCED.BIF956 t 
-                                        WHERE t.Y_AMOUNT < 0 
-                                        AND t.L_PROCESSED = 1 
-                                        AND t.L_DELETED = 0 
-                                        AND t.C_TRANSCODE LIKE 'PAY%' 
-                                        AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate 
-                                        GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') 
-                                        ORDER BY PayYearMonth;
-                                        `;
+    const query = `
+      WITH Billed AS (
+        SELECT 
+          FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS YearMonth, 
+          SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled 
+        FROM ADVANCED.BIF951 AS b 
+        WHERE b.L_PROCESSED = 1 
+          AND b.L_CANCEL = 0 
+          AND b.L_NOBILL = 0 
+          AND b.C_BILLTYPE <> 'CB' 
+          AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate 
+        GROUP BY FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE), 1), 'yyyy-MM')
+      ), 
+      Collected AS ( 
+        SELECT 
+          FORMAT(t.D_PAYDATE, 'yyyy-MM') AS YearMonth, 
+          ABS(SUM(t.Y_AMOUNT)) AS totalCollected 
+        FROM ADVANCED.BIF956 AS t 
+        WHERE t.Y_AMOUNT < 0 
+          AND t.L_PROCESSED = 1 
+          AND t.L_DELETED = 0 
+          AND t.C_TRANSCODE LIKE 'PAY%' 
+          AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate 
+        GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM')
+      ) 
+      SELECT 
+        COALESCE(b.YearMonth, c.YearMonth) AS month,
+        ISNULL(b.totalBilled, 0) AS billed,
+        ISNULL(c.totalCollected, 0) AS collected
+      FROM Billed b 
+      FULL OUTER JOIN Collected c ON b.YearMonth = c.YearMonth 
+      ORDER BY month;
+    `;
 
-    const billedResult = await request.query(totalBilledByMonthQuery);
-    const collectedResult = await request.query(totalCollectedByMonthQuery);
+    const result = await request.query(query);
 
-    const billedData = billedResult.recordset as { BillYearMonth: string; totalBilled: number }[];
-    const collectedData = collectedResult.recordset as { PayYearMonth: string; TotalCollected: number }[];
-
-    const mergedData: { [key: string]: ChartData } = {};
-
-    billedData.forEach(item => {
-      const month = item.BillYearMonth;
-      if (!mergedData[month]) {
-        mergedData[month] = { month, billed: 0, collected: 0 };
-      }
-      mergedData[month].billed += item.totalBilled;
-    });
-
-    collectedData.forEach(item => {
-      const month = item.PayYearMonth;
-      if (!mergedData[month]) {
-        mergedData[month] = { month, billed: 0, collected: 0 };
-      }
-      mergedData[month].collected += item.TotalCollected;
-    });
-
-    return Object.values(mergedData).sort((a, b) => a.month.localeCompare(b.month));
+    return result.recordset.map(record => ({
+      month: record.month,
+      billed: record.billed,
+      collected: record.collected,
+    }));
   } catch (err) {
     console.error('Error fetching chart data:', err);
     throw err;
