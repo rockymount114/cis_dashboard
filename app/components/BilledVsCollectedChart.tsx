@@ -43,7 +43,7 @@ export const BilledVsCollectedChart = ({ startDate, endDate }: { startDate: stri
 
   return (
     <div className="w-full h-96 bg-white p-4 rounded-lg shadow-md mt-8">
-        <h2 className="text-xl font-semibold text-gray-800 mb-4">Billed vs. Collected</h2>
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">Billed vs. Collected By Month</h2>
         <ResponsiveContainer>
             <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
