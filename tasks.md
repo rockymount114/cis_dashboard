@@ -1,195 +1,188 @@
-# Feature: Add Percentage to KPI Cards
+# Feature: Optimize KPI Data Query
 
-## Phase 1: Modify KpiCard Component
+## Phase 1: Refactor Database Query
 
-### Task T001: Enhance `KpiCard` to Display Percentages
+### Task T001: Consolidate KPI Data Queries
 
-**File:** `app/components/KpiCard.tsx`
+**File:** `lib/db.ts`
 
-**Goal:** Update the `KpiCard` component to optionally display a percentage value below the main value.
+**Goal:** Replace the three separate queries for fetching KPI data with a single, more efficient query.
 
 **Details:**
 
-- Add a new optional prop `percentage` of type `number` to `KpiCardProps`.
-- Add a new optional prop `percentage_label` of type `string` to `KpiCardProps`.
-- Conditionally render a new `<p>` tag to display the percentage if the `percentage` prop is provided.
-- The percentage should be formatted with two decimal places and a '%' sign.
+- The current implementation in `getKpiData` executes three separate SQL queries to fetch `totalCustomers` and `totalAccounts`, `totalBilled`, and `totalPayments`.
+- This will be replaced by a single SQL query that calculates all these values in one go, reducing database overhead and improving performance.
+- The new query uses Common Table Expressions (CTEs) to first filter the data and then aggregate the results.
 
 **Implementation:**
 
 ```typescript
-import CountUp from 'react-countup';
+import sql from 'mssql';
 
-interface KpiCardProps {
-  title: string;
-  value: number;
-  format?: "currency" | "number";
-  percentage?: number;
-  percentage_label?: string;
+const config = {
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  server: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME,
+  options: {
+    encrypt: false, // Set to false for non-Azure SQL Server instances
+    trustServerCertificate: true, // Keep true for local dev / self-signed certs
+    requestTimeout: 60000, // 60 seconds
+    connectionTimeout: 60000, // 60 seconds
+    readonly: true
+  },
+};
+
+let pool: sql.ConnectionPool;
+
+const getPool = async () => {
+  if (!pool) {
+    try {
+      pool = await sql.connect(config);
+    } catch (err) {
+      console.error('Database connection failed:', err);
+      throw err;
+    }
+  }
+  return pool;
+};
+
+export interface KpiData {
+  totalCustomers: number;
+  totalAccounts: number;
+  totalBilled: number;
+  totalPayments: number;
+  totalUnpaid: number;
 }
 
-export function KpiCard({ title, value, format = "currency", percentage, percentage_label }: KpiCardProps) {
-  return (
-    <div className="bg-white shadow-lg rounded-lg p-6 text-center shake-on-hover">
-      <h3 className="text-lg font-semibold text-gray-500">{title}</h3>
-      <p className="text-xl font-bold text-gray-900 mt-2">
-        <CountUp
-          end={value}
-          duration={2}
-          separator=","
-          prefix={format === "currency" ? "$" : ""}
-          decimals={format === "currency" ? 2 : 0}
-        />
-      </p>
-      {percentage !== undefined && (
-        <p className="text-sm text-gray-500 mt-1">
-          <CountUp
-            end={percentage}
-            duration={2}
-            separator=","
-            decimals={2}
-            suffix="%"
-          />
-          {percentage_label && <span className="ml-1">{percentage_label}</span>}
-        </p>
-      )}
-    </div>
-  );
+export interface DateRange {
+  startDate: string;
+  endDate: string;
 }
 
-export function KpiCardSkeleton() {
-  return (
-    <div className="bg-white shadow-lg rounded-lg p-6 text-center animate-pulse">
-      <div className="h-6 bg-gray-200 rounded w-3/4 mx-auto"></div>
-      <div className="h-10 bg-gray-300 rounded w-1/2 mx-auto mt-2"></div>
-    </div>
-  );
+export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+    
+    const query = `
+      WITH Base AS (
+        SELECT *
+        FROM ADVANCED.BIF951 b
+        WHERE b.L_PROCESSED = 1
+          AND b.L_CANCEL = 0
+          AND b.L_NOBILL = 0
+          AND b.C_BILLTYPE <> 'CB'
+          AND b.D_BILLDATE BETWEEN @startDate AND @endDate
+      ),
+      Payments AS (
+        SELECT ABS(SUM(t.Y_AMOUNT)) AS totalCollected
+        FROM ADVANCED.BIF956 t
+        WHERE t.Y_AMOUNT < 0
+          AND t.L_PROCESSED = 1
+          AND t.L_DELETED = 0
+          AND t.C_TRANSCODE LIKE 'PAY%'
+          AND t.D_PAYDATE BETWEEN @startDate AND @endDate
+      )
+      SELECT 
+        COUNT(DISTINCT C_CUSTOMER) AS totalCustomers,
+        COUNT(DISTINCT C_ACCOUNT) AS totalAccounts,
+        SUM(Y_CURRENTTRANSACTIONS) AS totalBilled,
+        (SELECT totalCollected FROM Payments) AS totalPayments,
+        SUM(Y_CURRENTTRANSACTIONS) - (SELECT totalCollected FROM Payments) AS totalUnpaid
+      FROM Base;
+    `;
+
+    if (dateRange) {
+      request.input('startDate', sql.Date, dateRange.startDate);
+      request.input('endDate', sql.Date, dateRange.endDate);
+    }
+
+    const result = await request.query(query);
+    const record = result.recordset[0];
+
+    return {
+      totalCustomers: record.totalCustomers,
+      totalAccounts: record.totalAccounts,
+      totalBilled: record.totalBilled,
+      totalPayments: record.totalPayments,
+      totalUnpaid: record.totalUnpaid,
+    };
+  } catch (err) {
+    console.error('Error fetching KPI data:', err);
+    // Re-throw the error to be handled by the API route
+    throw err;
+  }
+};
+
+
+export interface ChartData {
+  month: string;
+  billed: number;
+  collected: number;
 }
-```
 
-## Phase 2: Update Home Page to Provide Percentage Data
+export const getChartData = async (dateRange: DateRange): Promise<ChartData[]> => {
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+    request.input('startDate', sql.Date, dateRange.startDate);
+    request.input('endDate', sql.Date, dateRange.endDate);
 
-### Task T002: Update Home Page to Calculate and Pass Percentages
+    const totalBilledByMonthQuery = `SELECT FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), 
+                                      MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS BillYearMonth, 
+                                      SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled 
+                                      FROM ADVANCED.BIF951 AS b 
+                                      WHERE b.L_PROCESSED = 1 
+                                      AND b.L_CANCEL = 0 
+                                      AND b.L_NOBILL = 0 
+                                      AND b.C_BILLTYPE <> 'CB' 
+                                      AND b.D_BILLDATE >= @startDate AND b.D_BILLDATE <= @endDate 
+                                      GROUP BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE) 
+                                      ORDER BY YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE);
+                                      `;
+    const totalCollectedByMonthQuery = `SELECT FORMAT(t.D_PAYDATE, 'yyyy-MM') AS PayYearMonth, 
+                                        ABS(SUM(t.Y_AMOUNT)) AS TotalCollected 
+                                        FROM ADVANCED.BIF956 t 
+                                        WHERE t.Y_AMOUNT < 0 
+                                        AND t.L_PROCESSED = 1 
+                                        AND t.L_DELETED = 0 
+                                        AND t.C_TRANSCODE LIKE 'PAY%' 
+                                        AND t.D_PAYDATE >= @startDate AND t.D_PAYDATE <= @endDate 
+                                        GROUP BY FORMAT(t.D_PAYDATE, 'yyyy-MM') 
+                                        ORDER BY PayYearMonth;
+                                        `;
 
-**File:** `app/page.tsx`
+    const billedResult = await request.query(totalBilledByMonthQuery);
+    const collectedResult = await request.query(totalCollectedByMonthQuery);
 
-**Goal:** Calculate the "Collected" and "Gap" percentages and pass them to the respective `KpiCard` components.
+    const billedData = billedResult.recordset as { BillYearMonth: string; totalBilled: number }[];
+    const collectedData = collectedResult.recordset as { PayYearMonth: string; TotalCollected: number }[];
 
-**Details:**
+    const mergedData: { [key: string]: ChartData } = {};
 
-- In the `Home` component, when the `data` is available, calculate:
-  - `collectedPercentage`: `(data.totalPayments / data.totalBilled) * 100`
-  - `gapPercentage`: `(data.totalUnpaid / data.totalBilled) * 100`
-- Pass these calculated percentages to the "Collected" and "Gap" `KpiCard` components using the new `percentage` prop.
-- Pass a `percentage_label` as well.
+    billedData.forEach(item => {
+      const month = item.BillYearMonth;
+      if (!mergedData[month]) {
+        mergedData[month] = { month, billed: 0, collected: 0 };
+      }
+      mergedData[month].billed += item.totalBilled;
+    });
 
-**Implementation:**
+    collectedData.forEach(item => {
+      const month = item.PayYearMonth;
+      if (!mergedData[month]) {
+        mergedData[month] = { month, billed: 0, collected: 0 };
+      }
+      mergedData[month].collected += item.TotalCollected;
+    });
 
-```typescript
-'use client';
+    return Object.values(mergedData).sort((a, b) => a.month.localeCompare(b.month));
+  } catch (err) {
+    console.error('Error fetching chart data:', err);
+    throw err;
+  }
+};
 
-import { useState } from 'react';
-import useSWR from 'swr';
-
-import { KpiData } from '@/lib/db';
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
-import { KpiCard, KpiCardSkeleton } from '@/app/components/KpiCard';
-import { BilledVsCollectedChart } from '@/app/components/BilledVsCollectedChart';
-
-
-export default function Home() {
-  const getFormattedDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const today = new Date();
-  const firstDayOfYear = new Date(today.getFullYear(), 0, 1);
-
-  const [startDate, setStartDate] = useState(getFormattedDate(firstDayOfYear));
-  const [endDate, setEndDate] = useState(getFormattedDate(today));
-
-  // Construct the API URL with query parameters if dates are set
-  const apiUrl = `/api/kpis${startDate && endDate ? `?startDate=${startDate}&endDate=${endDate}` : ''}`;
-  const { data, error } = useSWR<KpiData>(apiUrl, fetcher);
-
-  const collectedPercentage = data ? (data.totalPayments / data.totalBilled) * 100 : 0;
-  const gapPercentage = data ? (data.totalUnpaid / data.totalBilled) * 100 : 0;
-
-  return (
-    <main className="flex min-h-screen flex-col items-center p-12 bg-gray-50">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex mb-8">
-        <h1 className="text-4xl font-bold text-center text-gray-800 w-full">CIS Dashboard</h1>
-      </div>
-
-      {/* Date Filter UI */}
-      <div className="mb-8 flex gap-4 items-center bg-white p-4 rounded-lg shadow-md">
-        <div>
-          <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">Start Date</label>
-          <input 
-            type="date" 
-            id="startDate" 
-            name="startDate" 
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" 
-          />
-        </div>
-        <div>
-          <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">End Date</label>
-          <input 
-            type="date" 
-            id="endDate" 
-            name="endDate" 
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" 
-          />
-        </div>
-      </div>
-
-
-      {error && <div className="text-red-500">Failed to load KPI data. Please try again later.</div>}
-      
-      {!data && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 w-full max-w-5xl">
-          <KpiCardSkeleton />
-          <KpiCardSkeleton />
-          <KpiCardSkeleton />
-          <KpiCardSkeleton />
-          <KpiCardSkeleton />
-        </div>
-      )}
-
-      {data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 w-full max-w-5xl">
-          <KpiCard title="Customers" value={data.totalCustomers} format="number"/>
-          <KpiCard title="Accounts" value={data.totalAccounts} format="number"/>
-          <KpiCard title="Billed" value={data.totalBilled} format="currency"/>
-          <KpiCard 
-            title="Collected" 
-            value={data.totalPayments} 
-            format="currency"
-            percentage={collectedPercentage}
-            percentage_label="of Billed"
-          />
-          <KpiCard 
-            title="Gap" 
-            value={data.totalUnpaid} 
-            format="currency"
-            percentage={gapPercentage}
-            percentage_label="of Billed"
-          />
-        </div>
-      )}
-
-      {startDate && endDate && <BilledVsCollectedChart startDate={startDate} endDate={endDate} />}
-
-    </main>
-  );
-}
+export { getPool, sql };
 ```

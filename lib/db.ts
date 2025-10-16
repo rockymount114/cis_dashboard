@@ -41,82 +41,76 @@ export interface DateRange {
   endDate: string;
 }
 
-export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
-  try {
-    const pool = await getPool();
-    const request = pool.request();
-    
-    let query = `
-                  SELECT 
-                    count(distinct C_CUSTOMER) AS totalCustomers,
-                    count(distinct C_ACCOUNT) AS totalAccounts
-                  FROM ADVANCED.BIF951 AS b
-                  WHERE
-                        b.L_PROCESSED = 1
-                        AND b.L_CANCEL = 0
-                        AND b.L_NOBILL = 0
-                        AND b.C_BILLTYPE <> 'CB'
-                `;
 
-    let totalBilledQuery = `
-                  SELECT SUM(b.Y_CURRENTTRANSACTIONS) AS totalBilled
-                  FROM ADVANCED.BIF951 AS b
-                  WHERE b.L_PROCESSED = 1
-                    AND b.L_CANCEL = 0
-                    AND b.L_NOBILL = 0
-                    AND b.C_BILLTYPE <> 'CB'
-                `;
-               
-    let totalPaymentsQuery = `
-                                  SELECT
-                                  ABS(SUM(t.Y_AMOUNT)) AS totalCollected
-                                  FROM ADVANCED.BIF956 t
-                                  WHERE
-                                  t.Y_AMOUNT < 0
-                                  AND t.L_PROCESSED = 1
-                                  AND t.L_DELETED = 0
-                                  AND t.C_TRANSCODE LIKE 'PAY%'   
-    
-                                `;            
+
+export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
+
+  try {
+
+    const pool = await getPool();
+    const request = pool.request();    
+
+    const query = `
+
+      WITH Base AS (
+        SELECT *
+        FROM ADVANCED.BIF951 b
+        WHERE b.L_PROCESSED = 1
+          AND b.L_CANCEL = 0
+          AND b.L_NOBILL = 0
+          AND b.C_BILLTYPE <> 'CB'
+          AND b.D_BILLDATE BETWEEN @startDate AND @endDate
+      ),
+
+      Payments AS (
+        SELECT ABS(SUM(t.Y_AMOUNT)) AS totalCollected
+        FROM ADVANCED.BIF956 t
+        WHERE t.Y_AMOUNT < 0
+          AND t.L_PROCESSED = 1
+          AND t.L_DELETED = 0
+          AND t.C_TRANSCODE LIKE 'PAY%'
+          AND t.D_PAYDATE BETWEEN @startDate AND @endDate
+      )
+
+      SELECT 
+        COUNT(DISTINCT C_CUSTOMER) AS totalCustomers,
+        COUNT(DISTINCT C_ACCOUNT) AS totalAccounts,
+        SUM(Y_CURRENTTRANSACTIONS) AS totalBilled,
+        (SELECT totalCollected FROM Payments) AS totalPayments,
+        SUM(Y_CURRENTTRANSACTIONS) - (SELECT totalCollected FROM Payments) AS totalUnpaid
+
+      FROM Base;
+
+    `;
+
+
 
     if (dateRange) {
-      query += `
-                AND b.D_BILLDATE >= @startDate
-                AND b.D_BILLDATE <= @endDate
-              `;
-      totalBilledQuery += `
-        AND b.D_BILLDATE >= @startDate
-        AND b.D_BILLDATE <= @endDate
-      `;
-      totalPaymentsQuery += `
-        AND t.D_PAYDATE >= @startDate
-        AND t.D_PAYDATE <= @endDate
-      `;
+
       request.input('startDate', sql.Date, dateRange.startDate);
       request.input('endDate', sql.Date, dateRange.endDate);
+
     }
 
     const result = await request.query(query);
     const record = result.recordset[0];
 
-    const totalBilledResult = await request.query(totalBilledQuery);
-    const totalBilledRecord = totalBilledResult.recordset[0];
-
-    const totalCollectedResult = await request.query(totalPaymentsQuery);
-    const totalCollectedRecord = totalCollectedResult.recordset[0];
-
     return {
+
       totalCustomers: record.totalCustomers,
       totalAccounts: record.totalAccounts,
-      totalBilled: totalBilledRecord.totalBilled,
-      totalPayments: totalCollectedRecord.totalCollected,
-      totalUnpaid: totalBilledRecord.totalBilled - totalCollectedRecord.totalCollected,
+      totalBilled: record.totalBilled,
+      totalPayments: record.totalPayments,
+      totalUnpaid: record.totalUnpaid,
+
     };
+
   } catch (err) {
     console.error('Error fetching KPI data:', err);
     // Re-throw the error to be handled by the API route
     throw err;
   }
+
 };
 
 
