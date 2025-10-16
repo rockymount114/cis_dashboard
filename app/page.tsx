@@ -79,8 +79,20 @@ export default function Home() {
           <KpiCard title="Customers" value={data.totalCustomers} format="number"/>
           <KpiCard title="Accounts" value={data.totalAccounts} format="number"/>
           <KpiCard title="Billed" value={data.totalBilled} format="currency"/>
-          <KpiCard title="Collected" value={data.totalPayments} format="currency"/>
-          <KpiCard title="Gap" value={data.totalUnpaid} format="currency"/>
+          <KpiCard 
+            title="Collected" 
+            value={data.totalPayments} 
+            format="currency"
+            percentage={(data.totalPayments / data.totalBilled) * 100}
+            percentage_label="of Billed"
+          />
+          <KpiCard 
+            title="Gap" 
+            value={data.totalUnpaid} 
+            format="currency"
+            percentage={(data.totalUnpaid / data.totalBilled) * 100}
+            percentage_label="of Billed"
+          />
         </div>
       )}
 

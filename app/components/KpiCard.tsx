@@ -5,9 +5,11 @@ interface KpiCardProps {
   title: string;
   value: number;
   format?: "currency" | "number";
+  percentage?: number;
+  percentage_label?: string;
 }
 
-export function KpiCard({ title, value, format = "currency" }: KpiCardProps) {
+export function KpiCard({ title, value, format = "currency", percentage, percentage_label }: KpiCardProps) {
   return (
     <div className="bg-white shadow-lg rounded-lg p-6 text-center shake-on-hover">
       <h3 className="text-lg font-semibold text-gray-500">{title}</h3>
@@ -20,6 +22,18 @@ export function KpiCard({ title, value, format = "currency" }: KpiCardProps) {
           decimals={format === "currency" ? 2 : 0}
         />
       </p>
+      {percentage !== undefined && (
+        <p className="text-sm text-gray-500 mt-1">
+          <CountUp
+            end={percentage}
+            duration={2}
+            separator=","
+            decimals={1}
+            suffix="%"
+          />
+          {percentage_label && <span className="ml-1">{percentage_label}</span>}
+        </p>
+      )}
     </div>
   );
 }
