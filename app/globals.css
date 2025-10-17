@@ -41,5 +41,5 @@ body {
 
 .shake-on-hover:hover {
   animation: shake 0.5s;
-  animation-iteration-count: infinite;
+  animation-iteration-count: 2s;
 }
