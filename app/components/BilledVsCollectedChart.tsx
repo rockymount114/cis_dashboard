@@ -25,8 +25,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       return (
         <div className="p-2 bg-white border rounded shadow-md">
           <p className="label">{`${label}`}</p>
-          <p className="intro" style={{ color: payload[0].color }}>{`Billed: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(billed)}`}</p>
-          <p className="intro" style={{ color: payload[1].color }}>{`Collected: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(collected)}`}</p>
+          <p className="intro" style={{ color: payload[1].color }}>{`Billed: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(billed)}`}</p>
+          <p className="intro" style={{ color: payload[0].color }}>{`Collected: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(collected)}`}</p>
           <p className="intro">{`Collection Rate: ${percentage.toFixed(1)}%`}</p>
         </div>
       );
@@ -51,8 +51,8 @@ export const BilledVsCollectedChart = ({ startDate, endDate }: { startDate: stri
             <YAxis tickFormatter={formatYAxis} />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
-            <Line type="monotone" dataKey="billed" stroke="#8884d8" activeDot={{ r: 8 }} />
-            <Line type="monotone" dataKey="collected" stroke="#82ca9d" />
+            <Line type="monotone" dataKey="billed" stroke="#ff3333" activeDot={{ r: 8 }} />
+            <Line type="monotone" dataKey="collected" stroke="#3333ff" />
             </LineChart>
         </ResponsiveContainer>
     </div>
