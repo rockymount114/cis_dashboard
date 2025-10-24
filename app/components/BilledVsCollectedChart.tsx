@@ -51,8 +51,8 @@ export const BilledVsCollectedChart = ({ startDate, endDate }: { startDate: stri
             <YAxis tickFormatter={formatYAxis} />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
-            <Line type="monotone" dataKey="billed" stroke="#ff3333" activeDot={{ r: 8 }} />
-            <Line type="monotone" dataKey="collected" stroke="#3333ff" />
+            <Line type="monotone" dataKey="billed" stroke="#e68a00" strokeWidth={3} activeDot={{ r: 8 }} />
+            <Line type="monotone" dataKey="collected" stroke="#4d79ff" strokeWidth={3} />
             </LineChart>
         </ResponsiveContainer>
     </div>
