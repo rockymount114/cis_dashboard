@@ -6,14 +6,14 @@ import { ChartData } from '@/lib/db';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-function formatYAxis(value: number) {
+function formatYAxis(value: number): string {
     if (value >= 1000000) {
       return `${value / 1000000}M`;
     }
     if (value >= 1000) {
       return `${value / 1000}K`;
     }
-    return value;
+    return value.toString();
   }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
