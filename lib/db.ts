@@ -1,23 +1,27 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+"use server";
+
 import sql from 'mssql';
 
+// Database config is kept here but not exported as an object to avoid export of non-async values
 const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   server: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME,
   options: {
-    encrypt: false, // Set to false for non-Azure SQL Server instances
-    trustServerCertificate: true, // Keep true for local dev / self-signed certs
-    requestTimeout: 60000, // 60 seconds
-    connectionTimeout: 60000, // 60 seconds
-    readonly: true
+    encrypt: false, // For local/dev
+    trustServerCertificate: true,
+    requestTimeout: 60000,
+    connectionTimeout: 60000,
+    readonly: true,
   },
 };
 
-let pool: sql.ConnectionPool;
+let pool: sql.ConnectionPool | null = null;
 
-const getPool = async () => {
+// Export only async functions from this server-only module
+
+export async function getPool(): Promise<sql.ConnectionPool> {
   if (!pool) {
     try {
       pool = await sql.connect(config);
@@ -27,7 +31,7 @@ const getPool = async () => {
     }
   }
   return pool;
-};
+}
 
 export interface KpiData {
   totalCustomers: number;
@@ -42,17 +46,12 @@ export interface DateRange {
   endDate: string;
 }
 
-
-
-export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
-
+export async function getKpiData(dateRange?: DateRange): Promise<KpiData> {
   try {
-
     const pool = await getPool();
-    const request = pool.request();    
+    const request = pool.request();
 
     const query = `
-
       WITH Base AS (
         SELECT *
         FROM ADVANCED.BIF951 b
@@ -62,7 +61,6 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
           AND b.C_BILLTYPE <> 'CB'
           AND b.D_BILLDATE BETWEEN @startDate AND @endDate
       ),
-
       Payments AS (
         SELECT ABS(SUM(t.Y_AMOUNT)) AS totalCollected
         FROM ADVANCED.BIF956 t
@@ -72,48 +70,35 @@ export const getKpiData = async (dateRange?: DateRange): Promise<KpiData> => {
           AND t.C_TRANSCODE LIKE 'PAY%'
           AND t.D_PAYDATE BETWEEN @startDate AND @endDate
       )
-
       SELECT 
         COUNT(DISTINCT C_CUSTOMER) AS totalCustomers,
         COUNT(DISTINCT C_ACCOUNT) AS totalAccounts,
         SUM(Y_CURRENTTRANSACTIONS) AS totalBilled,
         (SELECT totalCollected FROM Payments) AS totalPayments,
         SUM(Y_CURRENTTRANSACTIONS) - (SELECT totalCollected FROM Payments) AS totalUnpaid
-
       FROM Base;
-
     `;
 
-
-
     if (dateRange) {
-
       request.input('startDate', sql.Date, dateRange.startDate);
       request.input('endDate', sql.Date, dateRange.endDate);
-
     }
 
     const result = await request.query(query);
     const record = result.recordset[0];
 
     return {
-
       totalCustomers: record.totalCustomers,
       totalAccounts: record.totalAccounts,
       totalBilled: record.totalBilled,
       totalPayments: record.totalPayments,
       totalUnpaid: record.totalUnpaid,
-
     };
-
   } catch (err) {
     console.error('Error fetching KPI data:', err);
-    // Re-throw the error to be handled by the API route
     throw err;
   }
-
-};
-
+}
 
 export interface ChartData {
   month: string;
@@ -121,7 +106,7 @@ export interface ChartData {
   collected: number;
 }
 
-export const getChartData = async (dateRange: DateRange): Promise<ChartData[]> => {
+export async function getChartData(dateRange: DateRange): Promise<ChartData[]> {
   try {
     const pool = await getPool();
     const request = pool.request();
@@ -173,7 +158,4 @@ export const getChartData = async (dateRange: DateRange): Promise<ChartData[]> =
     console.error('Error fetching chart data:', err);
     throw err;
   }
-};
-
-export { getPool, sql };
-
+}
