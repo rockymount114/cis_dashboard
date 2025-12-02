@@ -52,7 +52,7 @@ export async function getCache<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function setCache<T>(key: string, data: T, ttlSeconds = 300) {
+export async function setCache<T>(key: string, data: T, ttlSeconds = 3000) {
   try {
     const client = await getRedisClient();
     await client.setEx(key, ttlSeconds, JSON.stringify(data));
