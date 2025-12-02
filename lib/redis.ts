@@ -41,7 +41,18 @@ export async function getRedisClient() {
   return redisClient;
 }
 
-export async function setCache(key: string, data: any, ttlSeconds = 300) {
+export async function getCache<T>(key: string): Promise<T | null> {
+  try {
+    const client = await getRedisClient();
+    const cached = await client.get(key);
+    return cached ? (JSON.parse(cached) as T) : null;
+  } catch (err) {
+    console.error('Error getting cache:', err);
+    return null;
+  }
+}
+
+export async function setCache<T>(key: string, data: T, ttlSeconds = 300) {
   try {
     const client = await getRedisClient();
     await client.setEx(key, ttlSeconds, JSON.stringify(data));
@@ -50,16 +61,6 @@ export async function setCache(key: string, data: any, ttlSeconds = 300) {
   }
 }
 
-export async function getCache(key: string) {
-  try {
-    const client = await getRedisClient();
-    const cached = await client.get(key);
-    return cached ? JSON.parse(cached) : null;
-  } catch (err) {
-    console.error('Error getting cache:', err);
-    return null;
-  }
-}
 
 export async function deleteCache(key: string) {
   try {
@@ -73,11 +74,20 @@ export async function deleteCache(key: string) {
 export async function clearCache(pattern?: string) {
   try {
     const client = await getRedisClient();
-    if (pattern) {
-      const keys = await client.keys(pattern);
-      if (keys.length > 0) {
+    if (!pattern) return;
+
+    const stream = client.scanIterator({ MATCH: pattern, COUNT: 100 });
+    const keys: string[] = [];
+
+    for await (const key of stream) {
+      keys.push(key as string);
+      if (keys.length >= 100) {
         await client.del(keys);
+        keys.length = 0;
       }
+    }
+    if (keys.length > 0) {
+      await client.del(keys);
     }
   } catch (err) {
     console.error('Error clearing cache:', err);

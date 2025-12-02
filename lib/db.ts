@@ -47,76 +47,80 @@ export interface DateRange {
   endDate: string;
 }
 
+async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await getCache<T>(key);
+  if (cached) return cached;
+
+  const data = await fetcher();
+  await setCache(key, data, ttlSeconds);
+  return data;
+}
+
 export async function getKpiData(dateRange?: DateRange): Promise<KpiData> {
-  // Create cache key based on date range
-  const cacheKey = dateRange
+  const key = dateRange
     ? `kpi_data_${dateRange.startDate}_${dateRange.endDate}`
     : 'kpi_data_all';
 
-  // Check cache first
-  const cachedData = await getCache(cacheKey);
-  if (cachedData) {
-    console.log('Returning cached KPI data');
-    return cachedData;
-  }
+  return withCache<KpiData>(key, 300, async () => {
+    try {
+      const pool = await getPool();
+      const request = pool.request();
 
-  try {
-    const pool = await getPool();
-    const request = pool.request();
+      const query = `
+        SET NOCOUNT ON;
+        WITH Base AS (
+          SELECT *
+          FROM ADVANCED.BIF951 b
+          WHERE b.L_PROCESSED = 1
+            AND b.L_CANCEL = 0
+            AND b.L_NOBILL = 0
+            AND b.C_BILLTYPE <> 'CB'
+            AND b.D_BILLDATE BETWEEN @startDate AND @endDate
+        ),
+        Payments AS (
+          SELECT ABS(SUM(t.Y_AMOUNT)) AS totalCollected
+          FROM ADVANCED.BIF956 t
+          WHERE t.Y_AMOUNT < 0
+            AND t.L_PROCESSED = 1
+            AND t.L_DELETED = 0
+            AND t.C_TRANSCODE LIKE 'PAY%'
+            AND t.D_PAYDATE BETWEEN @startDate AND @endDate
+        )
+        SELECT 
+          COUNT(DISTINCT C_CUSTOMER) AS totalCustomers,
+          COUNT(DISTINCT C_ACCOUNT) AS totalAccounts,
+          SUM(Y_CURRENTTRANSACTIONS) AS totalBilled,
+          (SELECT totalCollected FROM Payments) AS totalPayments,
+          SUM(Y_CURRENTTRANSACTIONS) - (SELECT totalCollected FROM Payments) AS totalUnpaid
+        FROM Base;
+      `;
 
-    const query = `
-      WITH Base AS (
-        SELECT *
-        FROM ADVANCED.BIF951 b
-        WHERE b.L_PROCESSED = 1
-          AND b.L_CANCEL = 0
-          AND b.L_NOBILL = 0
-          AND b.C_BILLTYPE <> 'CB'
-          AND b.D_BILLDATE BETWEEN @startDate AND @endDate
-      ),
-      Payments AS (
-        SELECT ABS(SUM(t.Y_AMOUNT)) AS totalCollected
-        FROM ADVANCED.BIF956 t
-        WHERE t.Y_AMOUNT < 0
-          AND t.L_PROCESSED = 1
-          AND t.L_DELETED = 0
-          AND t.C_TRANSCODE LIKE 'PAY%'
-          AND t.D_PAYDATE BETWEEN @startDate AND @endDate
-      )
-      SELECT 
-        COUNT(DISTINCT C_CUSTOMER) AS totalCustomers,
-        COUNT(DISTINCT C_ACCOUNT) AS totalAccounts,
-        SUM(Y_CURRENTTRANSACTIONS) AS totalBilled,
-        (SELECT totalCollected FROM Payments) AS totalPayments,
-        SUM(Y_CURRENTTRANSACTIONS) - (SELECT totalCollected FROM Payments) AS totalUnpaid
-      FROM Base;
-    `;
+      if (dateRange) {
+        request.input('startDate', sql.Date, dateRange.startDate);
+        request.input('endDate', sql.Date, dateRange.endDate);
+      }
 
-    if (dateRange) {
-      request.input('startDate', sql.Date, dateRange.startDate);
-      request.input('endDate', sql.Date, dateRange.endDate);
+      const queryResult = await request.query(query);
+      const record = queryResult.recordset[0];
+
+      return {
+        totalCustomers: record.totalCustomers,
+        totalAccounts: record.totalAccounts,
+        totalBilled: record.totalBilled,
+        totalPayments: record.totalPayments,
+        totalUnpaid: record.totalUnpaid,
+      };
+    } catch (err) {
+      console.error('Error fetching KPI data:', err);
+      throw err;
     }
-
-    const queryResult = await request.query(query);
-    const record = queryResult.recordset[0];
-
-    const result = {
-      totalCustomers: record.totalCustomers,
-      totalAccounts: record.totalAccounts,
-      totalBilled: record.totalBilled,
-      totalPayments: record.totalPayments,
-      totalUnpaid: record.totalUnpaid,
-    };
-
-    // Cache the result for 5 minutes (300 seconds)
-    await setCache(cacheKey, result, 300);
-
-    return result;
-  } catch (err) {
-    console.error('Error fetching KPI data:', err);
-    throw err;
-  }
+  });
 }
+
 
 export interface ChartData {
   month: string;
@@ -141,7 +145,7 @@ export async function getChartData(dateRange: DateRange): Promise<ChartData[]> {
     request.input('startDate', sql.Date, dateRange.startDate);
     request.input('endDate', sql.Date, dateRange.endDate);
 
-    const query = `
+    const query = `SET NOCOUNT ON;
       WITH Billed AS (
         SELECT 
           FORMAT(DATEFROMPARTS(YEAR(b.D_BILLDATE), MONTH(b.D_BILLDATE), 1), 'yyyy-MM') AS YearMonth, 
