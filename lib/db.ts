@@ -12,8 +12,8 @@ const config = {
   options: {
     encrypt: false, // For local/dev
     trustServerCertificate: true,
-    requestTimeout: 60000,
-    connectionTimeout: 60000,
+    requestTimeout: 300000, // 5mins
+    connectionTimeout: 300000,
     readonly: true,
   },
 };
