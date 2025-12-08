@@ -73,23 +73,31 @@ export async function deleteCache(key: string) {
 
 export async function clearCache(pattern?: string) {
   try {
-    const client = await getRedisClient();
     if (!pattern) return;
 
-    const stream = client.scanIterator({ MATCH: pattern, COUNT: 100 });
+    const client = await getRedisClient();
+
+    const stream = client.scanIterator({
+      MATCH: pattern,
+      COUNT: 100,
+    }) as AsyncIterable<string>;  // <-- FIX TYPE HERE
+
     const keys: string[] = [];
 
     for await (const key of stream) {
-      keys.push(key as string);
+      keys.push(key);
+
       if (keys.length >= 100) {
         await client.del(keys);
         keys.length = 0;
       }
     }
+
     if (keys.length > 0) {
       await client.del(keys);
     }
   } catch (err) {
-    console.error('Error clearing cache:', err);
+    console.error("Error clearing cache:", err);
   }
 }
+
