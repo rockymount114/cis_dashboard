@@ -132,12 +132,28 @@ export async function getChartData(dateRange: DateRange): Promise<ChartData[]> {
   // Create cache key based on date range
   const cacheKey = `chart_data_${dateRange.startDate}_${dateRange.endDate}`;
 
-  // Check cache first
   const cachedData = await getCache(cacheKey);
+
   if (cachedData) {
-    console.log('Returning cached chart data');
-    return cachedData;
+  if (Array.isArray(cachedData)) {
+    console.log("Returning cached chart data (object cache)");
+    return cachedData as ChartData[];
   }
+
+  // If cached was stored as JSON string
+  if (typeof cachedData === "string") {
+    try {
+      const parsed = JSON.parse(cachedData);
+
+      if (Array.isArray(parsed)) {
+        console.log("Returning cached chart data (string cache)");
+        return parsed as ChartData[];
+      }
+    } catch (err) {
+      console.warn("Failed to parse string cached chart data:", err);
+    }
+  }
+}
 
   try {
     const pool = await getPool();
