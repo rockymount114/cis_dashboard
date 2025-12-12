@@ -18,15 +18,18 @@ function formatYAxis(value: number): string {
 
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const billed = payload[0].payload.billed;
-      const collected = payload[0].payload.collected;
+      const billedData = payload.find((p: any) => p.dataKey === 'billed');
+      const collectedData = payload.find((p: any) => p.dataKey === 'collected');
+      
+      const billed = billedData?.value || 0;
+      const collected = collectedData?.value || 0;
       const percentage = billed > 0 ? (collected / billed) * 100 : 0;
   
       return (
         <div className="p-2 bg-white border rounded shadow-md">
           <p className="label">{`${label}`}</p>
-          <p className="intro" style={{ color: payload[0].color }}>{`Billed: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(billed)}`}</p>
-          <p className="intro" style={{ color: payload[1].color }}>{`Collected: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(collected)}`}</p>
+          <p className="intro" style={{ color: billedData?.color }}>{`Billed: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(billed)}`}</p>
+          <p className="intro" style={{ color: collectedData?.color }}>{`Collected: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(collected)}`}</p>
           <p className="intro">{`Collection Rate: ${percentage.toFixed(1)}%`}</p>
         </div>
       );
