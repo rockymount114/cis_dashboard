@@ -1,28 +1,66 @@
+/*
+
+Monthly Billing & Collection Analysis - ADVANCED.BIF951 + BIF956
+
+Purpose:
+    Track billed vs collected amounts by month, with collection efficiency KPIs:
+    - Collection Rate %, Avg Days to Pay, Aging Buckets, Overpayments, Unpaid %
+    
+Logic:
+    1. Bills: ADVANCED.BIF951 where L_PROCESSED=1, L_CANCEL=0, L_NOBILL=0
+       Excludes C_BILLTYPE IN ('CB','RB') = cancels and rebills
+    2. Payments: ADVANCED.BIF956 where Y_AMOUNT<0, L_PROCESSED=1, L_DELETED=0, C_TRANSCODE LIKE 'PAY%'
+    3. Matching: Each payment matched to most recent bill for same C_ACCOUNT on or before D_PAYDATE
+       Note: I_ORIGINATEDFROMBILL is not populated in this system, so we use account+date logic
+    4. Aging: Based on days from D_BILLDATE to first payment date for that bill
+       Buckets: 0-30, 31-60, 61-90, 90+ days. Overpayments tracked separately.
+    5. All dates truncated to month-start for grouping. SQL Server 2014 compatible.
+
+C_BILLTYPE Reference:
+    AF: Auto Final Bill
+    FB: Auto Final Bill  
+    FR: Removed Meter Read
+    IT: Regular Bill
+    MB: Scheduled Read (likely Master Bill)
+    MF: Master Final Bill
+    RB: Cancel Rebill - EXCLUDED
+    CB: Cancel Bill - EXCLUDED
+    SC: Scheduled Read
+
+Assumptions:
+    - Payments apply FIFO: newest bill first. Change ORDER BY b.D_BILLDATE DESC to ASC for oldest-first
+    - Payments > billed amount are capped in aging buckets and excess shown in PctOverpaid
+
+*/
 DECLARE @startDate DATE = '2025-01-01';
 DECLARE @endDate DATE = GETDATE();
 
 WITH Months AS (
+    -- Generate all months in range so zero-activity months still appear
     SELECT DATEADD(MONTH, DATEDIFF(MONTH, 0, @startDate) + v.number, 0) AS MonthStart
     FROM master..spt_values v
     WHERE v.type = 'P'
       AND DATEADD(MONTH, DATEDIFF(MONTH, 0, @startDate) + v.number, 0) <= EOMONTH(@endDate)
 ),
 Bills AS (
+    -- All valid bills in period, excluding cancels/rebills
     SELECT
         b.I_BIF951PK,
         b.C_ACCOUNT,
         b.D_BILLDATE,
         DATEADD(MONTH, DATEDIFF(MONTH, 0, b.D_BILLDATE), 0) AS BillMonthStart,
-        b.Y_CURRENTTRANSACTIONS AS BilledAmount
+        b.Y_CURRENTTRANSACTIONS AS BilledAmount,
+        b.C_BILLTYPE
     FROM ADVANCED.BIF951 AS b
     WHERE b.L_PROCESSED = 1
         AND b.L_CANCEL = 0
         AND b.L_NOBILL = 0
-        AND b.C_BILLTYPE <> 'CB'
+        AND b.C_BILLTYPE NOT IN ('CB', 'RB') -- exclude Cancel Bill and Cancel Rebill
         AND b.D_BILLDATE >= @startDate
         AND b.D_BILLDATE < DATEADD(DAY, 1, @endDate)
 ),
 Payments AS (
+    -- All valid payments in period
     SELECT
         t.C_ACCOUNT,
         t.D_PAYDATE,
@@ -36,8 +74,8 @@ Payments AS (
         AND t.D_PAYDATE >= @startDate
         AND t.D_PAYDATE < DATEADD(DAY, 1, @endDate)
 ),
--- Match each payment to the most recent bill for that account <= paydate
 PaymentsWithBills AS (
+    -- Match each payment to most recent bill for same account <= payment date
     SELECT
         p.C_ACCOUNT,
         p.D_PAYDATE,
@@ -49,7 +87,7 @@ PaymentsWithBills AS (
         b.BilledAmount,
         ROW_NUMBER() OVER (
             PARTITION BY p.C_ACCOUNT, p.D_PAYDATE, p.PaidAmount 
-            ORDER BY b.D_BILLDATE DESC
+            ORDER BY b.D_BILLDATE DESC -- DESC = FIFO newest first, ASC = oldest first
         ) AS rn
     FROM Payments p
     OUTER APPLY (
@@ -60,8 +98,8 @@ PaymentsWithBills AS (
         ORDER BY b.D_BILLDATE DESC
     ) b
 ),
--- Aggregate payments back to bill level
 PaidBills AS (
+    -- Roll payments up to bill level: first pay date, total paid, days to pay
     SELECT
         BillMonthStart,
         I_BIF951PK,
@@ -75,6 +113,7 @@ PaidBills AS (
     GROUP BY BillMonthStart, I_BIF951PK, D_BILLDATE, BilledAmount
 ),
 BilledMonthly AS (
+    -- Monthly billed totals
     SELECT
         BillMonthStart,
         SUM(BilledAmount) AS TotalBilled,
@@ -84,18 +123,19 @@ BilledMonthly AS (
     GROUP BY BillMonthStart
 ),
 CollectedMonthly AS (
+    -- Monthly collected totals, independent of which bill they paid
     SELECT
         PayMonthStart AS MonthStart,
         SUM(PaidAmount) AS TotalCollected
     FROM Payments
     GROUP BY PayMonthStart
 ),
--- FIXED: explicitly alias columns to avoid ambiguous name errors
 AgingMonthly AS (
+    -- Calculate avg days + aging buckets per bill month
+    -- Caps paid at billed amount to prevent >100%. Excess goes to OverpaidAmount.
     SELECT
         b.BillMonthStart AS MonthStart,
         AVG(CAST(pb.DaysToPay AS DECIMAL(10,2))) AS AvgDaysToPay,
-        -- Cap paid amount at billed amount to avoid >100%
         SUM(CASE WHEN pb.DaysToPay BETWEEN 0 AND 30 
                  THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
                            THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
@@ -112,7 +152,8 @@ AgingMonthly AS (
                  THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
                            THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
                  ELSE 0 END) AS Paid_90Plus,
-        -- Unpaid = Billed - Capped Paid
+        SUM(CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                 THEN pb.AmountPaidToBill - pb.BilledAmount ELSE 0 END) AS OverpaidAmount,
         SUM(b.BilledAmount) - SUM(
             CASE WHEN pb.I_BIF951PK IS NOT NULL 
                  THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
@@ -124,6 +165,7 @@ AgingMonthly AS (
     GROUP BY b.BillMonthStart
 ),
 Combined AS (
+    -- Join all monthly metrics together
     SELECT
         m.MonthStart,
         CONVERT(CHAR(7), m.MonthStart, 121) AS YearMonth,
@@ -136,12 +178,14 @@ Combined AS (
         ISNULL(a.Paid_31_60, 0) AS Paid_31_60,
         ISNULL(a.Paid_61_90, 0) AS Paid_61_90,
         ISNULL(a.Paid_90Plus, 0) AS Paid_90Plus,
+        ISNULL(a.OverpaidAmount, 0) AS OverpaidAmount,
         ISNULL(a.UnpaidBalance, 0) AS UnpaidBalance
     FROM Months m
     LEFT JOIN BilledMonthly b ON m.MonthStart = b.BillMonthStart
     LEFT JOIN CollectedMonthly c ON m.MonthStart = c.MonthStart
     LEFT JOIN AgingMonthly a ON m.MonthStart = a.MonthStart
 )
+-- Final output with calculated percentages and YTD running totals
 SELECT
     YearMonth,
     TotalBilled,
@@ -156,6 +200,7 @@ SELECT
     CASE WHEN TotalBilled = 0 THEN 0 ELSE ROUND(100.0 * Paid_31_60 / TotalBilled, 2) END AS PctPaid_31_60,
     CASE WHEN TotalBilled = 0 THEN 0 ELSE ROUND(100.0 * Paid_61_90 / TotalBilled, 2) END AS PctPaid_61_90,
     CASE WHEN TotalBilled = 0 THEN 0 ELSE ROUND(100.0 * Paid_90Plus / TotalBilled, 2) END AS PctPaid_90Plus,
+    CASE WHEN TotalBilled = 0 THEN 0 ELSE ROUND(100.0 * OverpaidAmount / TotalBilled, 2) END AS PctOverpaid,
     CASE WHEN TotalBilled = 0 THEN 0 ELSE ROUND(100.0 * UnpaidBalance / TotalBilled, 2) END AS PctUnpaid,
     SUM(TotalBilled) OVER (PARTITION BY YEAR(MonthStart) ORDER BY MonthStart ROWS UNBOUNDED PRECEDING) AS YTDBilled,
     SUM(TotalCollected) OVER (PARTITION BY YEAR(MonthStart) ORDER BY MonthStart ROWS UNBOUNDED PRECEDING) AS YTDCollected
