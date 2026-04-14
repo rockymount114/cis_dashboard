@@ -1,4 +1,4 @@
-DECLARE @startDate DATE = '2026-01-01';
+DECLARE @startDate DATE = '2025-01-01';
 DECLARE @endDate DATE = GETDATE();
 
 WITH Months AS (
@@ -95,11 +95,30 @@ AgingMonthly AS (
     SELECT
         b.BillMonthStart AS MonthStart,
         AVG(CAST(pb.DaysToPay AS DECIMAL(10,2))) AS AvgDaysToPay,
-        SUM(CASE WHEN pb.DaysToPay BETWEEN 0 AND 30 THEN pb.BilledAmount ELSE 0 END) AS Paid_0_30,
-        SUM(CASE WHEN pb.DaysToPay BETWEEN 31 AND 60 THEN pb.BilledAmount ELSE 0 END) AS Paid_31_60,
-        SUM(CASE WHEN pb.DaysToPay BETWEEN 61 AND 90 THEN pb.BilledAmount ELSE 0 END) AS Paid_61_90,
-        SUM(CASE WHEN pb.DaysToPay > 90 THEN pb.BilledAmount ELSE 0 END) AS Paid_90Plus,
-        SUM(CASE WHEN pb.I_BIF951PK IS NULL THEN b.BilledAmount ELSE 0 END) AS UnpaidBalance
+        -- Cap paid amount at billed amount to avoid >100%
+        SUM(CASE WHEN pb.DaysToPay BETWEEN 0 AND 30 
+                 THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                           THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
+                 ELSE 0 END) AS Paid_0_30,
+        SUM(CASE WHEN pb.DaysToPay BETWEEN 31 AND 60 
+                 THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                           THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
+                 ELSE 0 END) AS Paid_31_60,
+        SUM(CASE WHEN pb.DaysToPay BETWEEN 61 AND 90 
+                 THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                           THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
+                 ELSE 0 END) AS Paid_61_90,
+        SUM(CASE WHEN pb.DaysToPay > 90 
+                 THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                           THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
+                 ELSE 0 END) AS Paid_90Plus,
+        -- Unpaid = Billed - Capped Paid
+        SUM(b.BilledAmount) - SUM(
+            CASE WHEN pb.I_BIF951PK IS NOT NULL 
+                 THEN CASE WHEN pb.AmountPaidToBill > pb.BilledAmount 
+                           THEN pb.BilledAmount ELSE pb.AmountPaidToBill END
+                 ELSE 0 END
+        ) AS UnpaidBalance
     FROM Bills b
     LEFT JOIN PaidBills pb ON pb.I_BIF951PK = b.I_BIF951PK
     GROUP BY b.BillMonthStart
