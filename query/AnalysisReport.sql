@@ -206,3 +206,52 @@ SELECT
     SUM(TotalCollected) OVER (PARTITION BY YEAR(MonthStart) ORDER BY MonthStart ROWS UNBOUNDED PRECEDING) AS YTDCollected
 FROM Combined
 ORDER BY MonthStart;
+
+
+-- Checking one month billed accounts
+SELECT 
+    b.C_ACCOUNT,
+    COUNT(*) AS BillCount,
+    SUM(b.Y_CURRENTTRANSACTIONS) AS TotalBilled,
+    MIN(b.D_BILLDATE) AS FirstBillDate,
+    MAX(b.D_BILLDATE) AS LastBillDate,
+    -- Concatenate all C_BILLTYPEs for the account in April
+    STUFF((
+        SELECT DISTINCT ', ' + b2.C_BILLTYPE
+        FROM ADVANCED.BIF951 AS b2
+        WHERE b2.C_ACCOUNT = b.C_ACCOUNT
+          AND b2.L_PROCESSED = 1
+          AND b2.L_CANCEL = 0
+          AND b2.L_NOBILL = 0
+          AND b2.C_BILLTYPE NOT IN ('CB', 'RB')
+          AND b2.D_BILLDATE >= '2026-04-01'
+          AND b2.D_BILLDATE < GETDATE()
+        FOR XML PATH(''), TYPE
+    ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS BillTypes
+FROM ADVANCED.BIF951 AS b
+WHERE b.L_PROCESSED = 1
+    AND b.L_CANCEL = 0
+    AND b.L_NOBILL = 0
+    AND b.C_BILLTYPE NOT IN ('CB', 'RB')
+    AND b.D_BILLDATE >= '2026-04-01'
+    AND b.D_BILLDATE < GETDATE()
+GROUP BY b.C_ACCOUNT
+ORDER BY TotalBilled DESC;
+
+-- or without grouping
+SELECT 
+    b.C_ACCOUNT,
+    b.I_BILLNUMBER,
+    b.C_BILLTYPE,
+    b.D_BILLDATE,
+    b.Y_CURRENTTRANSACTIONS AS BilledAmount,
+    b.D_DUEDATE
+FROM ADVANCED.BIF951 AS b
+WHERE b.L_PROCESSED = 1
+    AND b.L_CANCEL = 0
+    AND b.L_NOBILL = 0
+    AND b.C_BILLTYPE NOT IN ('CB', 'RB')
+    AND b.D_BILLDATE >= '2026-04-01'
+    AND b.D_BILLDATE < GETDATE()
+ORDER BY b.C_ACCOUNT, b.D_BILLDATE;
+
